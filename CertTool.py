@@ -20,6 +20,7 @@ def create_CA(capath):
     key.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
     ca = OpenSSL.crypto.X509()
     ca.set_serial_number(0)
+    # Value 2 means v3
     ca.set_version(2)
     subj = ca.get_subject()
     subj.countryName = 'CN'
@@ -38,7 +39,7 @@ def create_CA(capath):
          OpenSSL.crypto.X509Extension(b"extendedKeyUsage", True, b"serverAuth,clientAuth,emailProtection,timeStamping,msCodeInd,msCodeCom,msCTLSign,msSGC,msEFS,nsSGC"),
          OpenSSL.crypto.X509Extension(b"keyUsage", False, b"keyCertSign, cRLSign"),
          OpenSSL.crypto.X509Extension(b"subjectKeyIdentifier", False, b"hash", subject=ca)])
-    ca.sign(key, 'sha1')
+    ca.sign(key, 'sha256')
     with open(capath, 'wb') as fp:
         fp.write(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, ca))
         fp.write(OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, key))
@@ -71,13 +72,15 @@ def dummy_cert(cafile, certfile, commonname):
             ca = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, content)
             key = OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, content)
         cert = OpenSSL.crypto.X509()
+        # Value 2 means v3
+        cert.set_version(2)
         cert.gmtime_adj_notBefore(0)
         cert.gmtime_adj_notAfter(60 * 60 * 24 * 3652)
         cert.set_issuer(ca.get_subject())
         cert.get_subject().CN = '*' + commonname if commonname.startswith('.') else commonname
         cert.set_serial_number(int(time.time()*10000))
         cert.set_pubkey(ca.get_pubkey())
-        cert.sign(key, "sha1")
+        cert.sign(key, "sha256")
         with open(certfile, 'wb') as fp:
             fp.write(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, cert))
             fp.write(OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, key))
