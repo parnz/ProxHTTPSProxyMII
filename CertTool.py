@@ -115,5 +115,5 @@ def startup_check():
 
 startup_check()
 
-if __name__ == "__main__":
-    print("All Good!")
+#if __name__ == "__main__":
+#    print("All Good!")

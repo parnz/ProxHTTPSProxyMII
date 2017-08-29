@@ -40,6 +40,8 @@ class LoadConfig:
         self.REARPORT = int(self.config['GENERAL'].get('RearPort'))
         self.DEFAULTPROXY = self.config['GENERAL'].get('DefaultProxy')
         self.LOGLEVEL = self.config['GENERAL'].get('LogLevel')
+        self.BYPASSPROX = self.config['GENERAL'].get('ByPassProx')
+        self.TIMEOUT = self.config['GENERAL'].get('TimeOut')
 
 class ConnectionPools:
     """
@@ -55,7 +57,8 @@ class ConnectionPools:
     # - http://certifi.io/en/latest/
 
     # ssl_version="TLSv1" to specific version
-    sslparams = dict(cert_reqs="REQUIRED", ca_certs=CA_CERTS)
+    # sslparams = dict(cert_reqs="REQUIRED", ca_certs=CA_CERTS)
+    sslparams = dict(cert_reqs="NONE", ca_certs=None)
     # IE: http://support2.microsoft.com/kb/181050/en-us
     # Firefox about:config
     # network.http.connection-timeout 90
@@ -89,6 +92,7 @@ class ConnectionPools:
         self.noverifylist = list(self.conf['SSL No-Verify'].keys())
         self.blacklist = list(self.conf['BLACKLIST'].keys())
         self.sslpasslist = list(self.conf['SSL Pass-Thru'].keys())
+        self.sslpassalllist = list(self.conf['SSL Pass-Thru All'].keys())
         self.bypasslist = list(self.conf['BYPASS URL'].keys())
 
     def reloadConfig(self):
@@ -146,13 +150,29 @@ class FrontRequestHandler(ProxyRequestHandler):
         if any((fnmatch.fnmatch(self.host, pattern) for pattern in pools.blacklist)):
             # BLACK LIST
             self.deny_request()
-            logger.info("%03d " % self.reqNum + Fore.CYAN + 'Denied by blacklist: %s' % self.host)
+            logger.info("%03d " % self.reqNum + Fore.RED + 'Denied by blacklist: %s' % self.host)
         elif any((fnmatch.fnmatch(self.host, pattern) for pattern in pools.sslpasslist)):
             # SSL Pass-Thru
             if self.proxy and self.proxy.startswith('https'):
                 self.forward_to_https_proxy()
             elif self.proxy and self.proxy.startswith('socks5'):
                 self.forward_to_socks5_proxy()
+            elif self.proxy and self.proxy.startswith('http'):
+                self.forward_to_http_proxy()
+            elif config.BYPASSPROX == '1':
+                self.forward_to_prox(config.PROXADDR, int(config.TIMEOUT))
+            else:
+                self.tunnel_traffic()
+            # Upstream server or proxy of the tunnel is closed explictly, so we close the local connection too
+            self.close_connection = 1
+        elif any((fnmatch.fnmatch(self.host, pattern) for pattern in pools.sslpassalllist)):
+            # SSL Pass-Thru
+            if self.proxy and self.proxy.startswith('https'):
+                self.forward_to_https_proxy()
+            elif self.proxy and self.proxy.startswith('socks5'):
+                self.forward_to_socks5_proxy()
+            elif self.proxy and self.proxy.startswith('http'):
+                self.forward_to_http_proxy()
             else:
                 self.tunnel_traffic()
             # Upstream server or proxy of the tunnel is closed explictly, so we close the local connection too
@@ -195,7 +215,7 @@ class FrontRequestHandler(ProxyRequestHandler):
             if any((fnmatch.fnmatch(self.host, pattern) for pattern in pools.blacklist)):
                 # BLACK LIST
                 self.deny_request()
-                logger.info("%03d " % self.reqNum + Fore.CYAN + 'Denied by blacklist: %s' % self.host)
+                logger.info("%03d " % self.reqNum + Fore.RED + 'Denied by blacklist: %s' % self.host)
                 return
             host = urlparse(self.path).netloc
             self.proxy, self.pool, self.noverify = pools.getpool(self.host, httpmode=True)
@@ -269,7 +289,7 @@ class FrontRequestHandler(ProxyRequestHandler):
                 # Release the connection back into the pool
                 r.release_conn()
 
-    do_GET = do_POST = do_HEAD = do_PUT = do_DELETE = do_OPTIONS = do_METHOD
+    do_GET = do_POST = do_HEAD = do_PUT = do_DELETE = do_OPTIONS = do_PROPFIND = do_REPORT = do_METHOD
 
 class RearRequestHandler(ProxyRequestHandler):
     """
@@ -355,7 +375,7 @@ class RearRequestHandler(ProxyRequestHandler):
                 # Release the connection back into the pool
                 r.release_conn()
 
-    do_GET = do_POST = do_HEAD = do_PUT = do_DELETE = do_OPTIONS = do_METHOD
+    do_GET = do_POST = do_HEAD = do_PUT = do_DELETE = do_OPTIONS = do_PROPFIND = do_REPORT = do_METHOD
 
 """
 #Information#
@@ -399,7 +419,7 @@ try:
     print('  FrontServer  : localhost:%s' % config.FRONTPORT)
     print('  RearServer   : localhost:%s' % config.REARPORT)
     print('  ParentServer : %s' % config.DEFAULTPROXY)
-    print('  Proxomitron  : ' + config.PROXADDR)
+    print('  Privoxy      : ' + config.PROXADDR)
     print("=" * 76)
     while True:
         time.sleep(1)
